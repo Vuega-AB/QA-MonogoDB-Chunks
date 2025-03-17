@@ -1,0 +1,21 @@
+streamlit
+requests
+beautifulsoup4
+PyPDF2
+faiss-cpu
+numpy
+sentence_transformers
+langdetect
+google-generativeai
+python-dotenv
+together
+torch
+aiohttp
+asyncio
+pdfplumber
+crawl4ai
+openai
+pymongo
+pymupdf
+PyCryptodome
+# !playwright install
