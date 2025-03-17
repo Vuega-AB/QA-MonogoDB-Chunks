@@ -1,6 +1,15 @@
 import streamlit as st
 # Add custom CSS to hide the GitHub icon
-
+st.markdown(
+    """
+    <style>
+    [data-testid="stToolbar"]{
+        display: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 import os
 import requests
 from bs4 import BeautifulSoup
