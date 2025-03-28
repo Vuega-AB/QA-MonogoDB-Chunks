@@ -1,16 +1,16 @@
 import streamlit as st
 st.set_page_config(page_title="Chat App", page_icon="💬", layout="centered")
 # Add custom CSS to hide the GitHub icon
-# st.markdown(
-#     """
-#     <style>
-#     [data-testid="stToolbar"]{
-#         display: none !important;
-#     }
-#     </style>
-#     """,
-#     unsafe_allow_html=True
-# )
+st.markdown(
+    """
+    <style>
+    [data-testid="stToolbar"]{
+        display: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 import os
 import requests
 from bs4 import BeautifulSoup
