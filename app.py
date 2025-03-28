@@ -48,7 +48,7 @@ from email_validator import validate_email, EmailNotValidError
 load_dotenv()
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 st.write("TOGETHER_API_KEY:", TOGETHER_API_KEY)
-if not together_api_key:
+if not TOGETHER_API_KEY:
     raise ValueError("TOGETHER_API_KEY is not loaded. Check your .env file!")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 MONGO_URI = os.getenv("MongoDB")
