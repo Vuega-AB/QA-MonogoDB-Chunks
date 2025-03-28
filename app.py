@@ -52,7 +52,7 @@ load_dotenv()
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 TOGETHER_API_KEY = st.secrets["TOGETHER_API_KEY"]
 GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
-MONGO_URI = st.secrets["MONGO_URI"]
+MONGO_URI = st.secrets["MongoDB"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 
 # =================== Connections ============================
