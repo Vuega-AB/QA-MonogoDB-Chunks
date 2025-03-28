@@ -1,15 +1,16 @@
 import streamlit as st
+st.set_page_config(page_title="Chat App", page_icon="💬", layout="centered")
 # Add custom CSS to hide the GitHub icon
-st.markdown(
-    """
-    <style>
-    [data-testid="stToolbar"]{
-        display: none !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# st.markdown(
+#     """
+#     <style>
+#     [data-testid="stToolbar"]{
+#         display: none !important;
+#     }
+#     </style>
+#     """,
+#     unsafe_allow_html=True
+# )
 import os
 import requests
 from bs4 import BeautifulSoup
@@ -39,10 +40,16 @@ from google.api_core import exceptions
 import openai
 import hashlib
 from hashlib import md5
-
+import random
+import smtplib
+from email.message import EmailMessage
+from email_validator import validate_email, EmailNotValidError
 # ================== Environment Variables ==================
 load_dotenv()
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+st.write("TOGETHER_API_KEY:", TOGETHER_API_KEY)
+if not together_api_key:
+    raise ValueError("TOGETHER_API_KEY is not loaded. Check your .env file!")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 MONGO_URI = os.getenv("MongoDB")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -53,9 +60,149 @@ gemini_model = genai.GenerativeModel("gemini-2.0-flash")
 
 mongo_client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
 db = mongo_client["userembeddings"]
-collection = db["Modified_Chunk_processing"]
+users_collection = db["users"]
 
 client = Together(api_key=TOGETHER_API_KEY)
+# =================== Authentication UI =========================
+
+# Hash the password for security
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# Check if a user exists
+def get_user(username):
+    return users_collection.find_one({"username": username})
+
+# Create a new user in MongoDB
+def create_user(username, password, email):
+    hashed_pw = hash_password(password)
+    users_collection.insert_one({"username": username, "password": hashed_pw, "email": email})
+
+# Authenticate user credentials
+def authenticate_user(username, password):
+    user = get_user(username)
+    return user and user["password"] == hash_password(password)
+
+# Update the password for a user
+def update_password(username, new_password):
+    hashed_pw = hash_password(new_password)
+    users_collection.update_one({"username": username}, {"$set": {"password": hashed_pw}})
+
+# Generate a 6-digit OTP
+def generate_otp():
+    return str(random.randint(100000, 999999))
+
+# Send OTP to user email
+def send_otp_email(email, otp):
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = "Password Reset OTP"
+        msg["From"] = "nancyhisham2003@gmail.com"
+        msg["To"] = email
+        msg.set_content(f"Your OTP for password reset is: {otp}")
+
+        # Send email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login("nancyhisham2003@gmail.com", "sike xztt teak orkr")
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        print("Error sending email:", e)
+        return False
+
+# Initialize session state
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+if "username" not in st.session_state:
+    st.session_state["username"] = ""
+
+# Authentication UI
+with st.sidebar:
+    if not st.session_state["authenticated"]:
+        st.header("🔐 Authentication")
+        tab1, tab2, tab3 = st.tabs(["Login", "Sign Up", "Forgot Password"])
+
+        # **🔹 Login Tab**
+        with tab1:
+            st.subheader("Login")
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+
+            if st.button("Login"):
+                if authenticate_user(username, password):
+                    st.session_state["authenticated"] = True
+                    st.session_state["username"] = username
+                    st.success(f"✅ Welcome, {username}!")
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid username or password.")
+
+        # **🔹 Sign-Up Tab**
+        with tab2:
+            st.subheader("Create an Account")
+            new_username = st.text_input("Choose a Username")
+            new_password = st.text_input("Choose a Password", type="password")
+            confirm_password = st.text_input("Confirm Password", type="password")
+            email = st.text_input("Enter Your Email")
+
+            if st.button("Sign Up"):
+                try:
+                    validate_email(email)
+                    if new_password != confirm_password:
+                        st.error("❌ Passwords do not match.")
+                    elif get_user(new_username):
+                        st.error("❌ Username already exists. Try another.")
+                    else:
+                        create_user(new_username, new_password, email)
+                        st.success("✅ Account created successfully! You can now log in.")
+                except EmailNotValidError:
+                    st.error("❌ Invalid email format.")
+
+        # **🔹 Forgot Password Tab**
+        with tab3:
+            st.subheader("Reset Password")
+            reset_username = st.text_input("Enter your Username")
+
+            if st.button("Verify Username"):
+                user = get_user(reset_username)
+                if user:
+                    otp = generate_otp()
+                    st.session_state["reset_user"] = reset_username
+                    st.session_state["otp"] = otp
+                    st.session_state["email"] = user["email"]
+
+                    if send_otp_email(user["email"], otp):
+                        st.success("✅ OTP sent to your email! Enter it below.")
+                    else:
+                        st.error("❌ Failed to send OTP. Check email settings.")
+                else:
+                    st.error("❌ Username not found.")
+
+            if "reset_user" in st.session_state:
+                entered_otp = st.text_input("Enter OTP")
+                new_password = st.text_input("New Password", type="password")
+                confirm_new_password = st.text_input("Confirm New Password", type="password")
+
+                if st.button("Reset Password"):
+                    if entered_otp == st.session_state.get("otp"):
+                        if new_password == confirm_new_password:
+                            update_password(st.session_state["reset_user"], new_password)
+                            st.success("✅ Password reset successfully! You can now log in.")
+                            del st.session_state["reset_user"]
+                            del st.session_state["otp"]
+                            del st.session_state["email"]
+                        else:
+                            st.error("❌ Passwords do not match.")
+                    else:
+                        st.error("❌ Incorrect OTP.")
+
+# **STOP rendering content if user is not authenticated**
+if not st.session_state["authenticated"]:
+    st.warning("⚠️ Please log in to access the application.")
+    st.stop()
+
+# =================== Main App =========================
+
 
 def initialize_vector_db():
     model_local = SentenceTransformer("multi-qa-mpnet-base-dot-v1")
@@ -139,16 +286,16 @@ def extract_text(file):
     return text
 # ================== Generate Response ==================
 
-def update_vector_db(summary, texts, filehash, filename="uploaded"):
+def update_vector_db(username, summary, texts, filehash, filename="uploaded"):
     if not texts:
         return
     embeddings = embedding_model.encode(texts).tolist()
     summary_embedding = embedding_model.encode([summary]).tolist()[0]
     # embedding_array = np.array(embeddings, dtype="float32")
     # print(f"Embedding shape: {embedding_array.shape}")
-    documents = [{"filename": filename, "text": text, "summary": summary, "filehash": filehash, "embedding": emb, "summary_embedding": summary_embedding} for text, emb in zip(texts, embeddings)] 
+    documents = [{"username": username, "filename": filename, "text": text, "summary": summary, "filehash": filehash, "embedding": emb, "summary_embedding": summary_embedding} for text, emb in zip(texts, embeddings)] 
     try:
-        collection.insert_many(documents, ordered=False)
+        users_collection.insert_many(documents, ordered=False)
     except Exception as e:
         print(f"Error inserting documents: {e}")
 
@@ -193,13 +340,13 @@ def compress_summary(summary_text, max_words=100):
 
     return response.choices[0].message.content.strip()
 
-def process_pdf(file, filehash=None, filename="uploaded"):
+def process_pdf(username, file, filehash=None, filename="uploaded"):
     text = extract_text(file)
     summary = summarize_pdf(text)
     if len(summary.split()) > 200:
         summary = compress_summary(summary, max_words=100)
     chunks = chunk_text(text)
-    update_vector_db(summary, chunks, filehash, filename)
+    update_vector_db(username, summary, chunks, filehash, filename)
     return summary, chunks
 
 # -----------------------------------------------------------------------------
@@ -283,18 +430,23 @@ def evaluate_summaries_with_gpt(question, summaries):
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-def retrieve_context(query, top_summary_k=5, top_chunk_k=15):
+def retrieve_context(username, query, top_summary_k=5, top_chunk_k=15):
+    if not username:
+        return []
+    
     # Step 1: Get the query embedding
     query_embedding = embedding_model.encode([query]).tolist()[0]
     
     # Step 2: Retrieve all stored summaries and their embeddings
-    stored_summaries = list(collection.find({}, {"_id": 0, "summary_embedding": 1, "summary": 1}))
+    stored_summaries = list(users_collection.find({"username": username}, {"_id": 0, "summary_embedding": 1, "summary": 1}))
+    
     if not stored_summaries:
         return []
     
     # Step 3: Extract summary embeddings and texts
-    summary_embeddings = np.array([doc["summary_embedding"] for doc in stored_summaries], dtype="float32")
-    summaries = [doc["summary"] for doc in stored_summaries]
+    summary_embeddings = np.array([doc["summary_embedding"] for doc in stored_summaries if "summary_embedding" in doc], dtype="float32")
+    summaries = [doc["summary"] for doc in stored_summaries if "summary" in doc]
+
 
     # Step 4: Find the most relevant summaries
     similarities = cosine_similarity([query_embedding], summary_embeddings)[0]
@@ -304,17 +456,15 @@ def retrieve_context(query, top_summary_k=5, top_chunk_k=15):
     relevant_summaries_by_gpt = evaluate_summaries_with_gpt(query, relevant_summaries)
 
     # Step 5: Retrieve chunks from the selected summaries
-    stored_chunks = list(collection.find({}, {"_id": 0, "embedding": 1, "text": 1, "summary": 1}))
+    stored_chunks = list(users_collection.find({"username": username}, {"_id": 0, "embedding": 1, "text": 1, "summary": 1}))
     relevant_chunks = []
     
     for summary in relevant_summaries_by_gpt:
-        chunks = [doc for doc in stored_chunks if doc["summary"] == summary]
+        chunks = [doc for doc in stored_chunks if doc.get("summary") == summary]
         chunk_texts = [chunk["text"] for chunk in chunks]
         chunk_embeddings = np.array([chunk["embedding"] for chunk in chunks], dtype="float32")
         if faiss_index.ntotal == 0:
             faiss_index.add(np.array(chunk_embeddings, dtype="float32"))
-
-        
 
         # Step 6: Find the most relevant chunks within these summaries
         if len(chunk_texts) > 0:
@@ -407,20 +557,24 @@ async def main(urls):
 # -----------------------------------------------------------------------------
 # File Deletion Functions
 # -----------------------------------------------------------------------------
-def delete_file(filename):
-    collection.delete_many({"filename": filename})
+def delete_file(username, filename):
+    users_collection.delete_many({"username": username, "filename": filename})
     st.rerun()
 
-def delete_all_files():
-    collection.drop()
+def delete_all_files(username):
+    users_collection.delete_many({"username": username})
     st.rerun()
 
 # -----------------------------------------------------------------------------
 # File Deletion Functions
 # -----------------------------------------------------------------------------
-async def store_in_DB(pdf_links):
+async def store_in_DB(username, pdf_links):
     async with aiohttp.ClientSession() as session:
-        unique_file_hashes = set(item["filehash"] for item in collection.find({}, {"filehash": 1}))
+        unique_file_hashes = set(
+            item.get("filehash") for item in users_collection.find({"username": username}, {"filehash": 1})
+            if "filehash" in item
+        )
+
         for pdf_link in pdf_links:
             try:
                 async with session.get(pdf_link) as response:
@@ -431,7 +585,7 @@ async def store_in_DB(pdf_links):
                             if filehash not in unique_file_hashes:
                                 pdf_file = BytesIO(pdf_bytes)
                                 filename = os.path.basename(pdf_link)
-                                process_pdf(pdf_file, filehash, filename )
+                                process_pdf(username, pdf_file, filehash, filename )
                                 st.success(f"Processed PDF: {filename}")
                                 unique_file_hashes.add(filehash)
                     else:
@@ -449,6 +603,19 @@ text_color = "#E0E0E0" if is_dark_mode else "#000000"
 user_background = "#333" if is_dark_mode else "#e3f2fd"
 user_text_color = "#FFF" if is_dark_mode else "#000"
 
+st.sidebar.write(f"👋 Welcome, {st.session_state.username}")
+
+username = st.session_state.get("username")
+if not username:
+    st.error("You need to be logged in to upload files.")
+    st.stop()
+
+if st.sidebar.button("Logout"):
+    st.session_state.clear()  # Clears all stored session data
+    st.session_state.authenticated = False
+    st.session_state.pop("username", None)
+    st.rerun()
+        
 st.title("📄 AI Document Q&A and Web Scraper")
 
 with st.sidebar:
@@ -534,7 +701,7 @@ with st.sidebar:
                 st.warning("No items found.")
 
             if pdf_links:
-                asyncio.run(store_in_DB(pdf_links))
+                asyncio.run(store_in_DB(username, pdf_links))
 
     with tab3:
         st.subheader("📂 Stored Files in Database")
@@ -544,29 +711,33 @@ with st.sidebar:
 
         pdf_files = st.file_uploader("Upload PDF documents", type=["pdf"], accept_multiple_files=True, key=f"file_uploader_{st.session_state.file_uploader_key}")
         if pdf_files:
-            unique_file_hashes = set(item["filehash"] for item in collection.find({}, {"filehash": 1}))
+            unique_file_hashes = set(
+                item.get("filehash") for item in users_collection.find({"username": username}, {"filehash": 1})
+                if "filehash" in item
+            )
+
             for pdf_file in pdf_files:
                 file_hash = hashlib.md5(pdf_file.getvalue()).hexdigest()
                 if file_hash in unique_file_hashes:
                     st.warning(f"⚠️ {pdf_file.name} already exists. Skipping...")
                     continue
 
-                summary, chunks = process_pdf(pdf_file, file_hash, pdf_file.name)
+                summary, chunks = process_pdf(username, pdf_file, file_hash, pdf_file.name)
                 unique_file_hashes.add(file_hash)
                 st.success(f"Processed {pdf_file.name}, extracted {len(chunks)} text chunks.")
             
             st.session_state.file_uploader_key += 1
             st.rerun()
             
-        stored_files = list(collection.distinct("filename"))
+        stored_files = list(users_collection.distinct("filename", {"username": username}))
         if stored_files:
             for filename in stored_files:
                 col1, col2 = st.columns([0.8, 0.2])
                 col1.write(f"📄 {filename}")
                 if col2.button("🗑️ Delete", key=filename):
-                    delete_file(filename)
+                    delete_file(username, filename)
             if st.button("🗑️ Delete All Files"):
-                delete_all_files()
+                delete_all_files(username)
         else:
             st.info("No files stored in the database.")
 
@@ -628,7 +799,7 @@ if prompt := st.chat_input("Ask a question"):
     
     retrieved_context = []
     with st.spinner("Processing your Query..."):
-        retrieved_context = retrieve_context(prompt)
+        retrieved_context = retrieve_context(username, prompt)
     context = " ".join(retrieved_context) if retrieved_context else "No relevant context found."
 
     # Store user input only once (not per model)
