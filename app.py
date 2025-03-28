@@ -46,13 +46,14 @@ from email.message import EmailMessage
 from email_validator import validate_email, EmailNotValidError
 # ================== Environment Variables ==================
 load_dotenv()
-TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
-st.write("TOGETHER_API_KEY:", TOGETHER_API_KEY)
-if not TOGETHER_API_KEY:
-    raise ValueError("TOGETHER_API_KEY is not loaded. Check your .env file!")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-MONGO_URI = os.getenv("MongoDB")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+# GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# MONGO_URI = os.getenv("MongoDB")
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+TOGETHER_API_KEY = st.secrets["TOGETHER_API_KEY"]
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+MONGO_URI = st.secrets["MONGO_URI"]
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 
 # =================== Connections ============================
 genai.configure(api_key=GOOGLE_API_KEY)
