@@ -125,7 +125,8 @@ if not st.session_state.logged_in:
 
                 st.success(f"Welcome, {st.session_state.username}!")
                 st.session_state.logged_in = True  # Set login status
-                st.experimental_rerun()  # Refresh UI to hide login fields
+                st.rerun()
+
 
 # =================== Main App =========================
 
