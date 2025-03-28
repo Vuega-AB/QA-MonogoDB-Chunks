@@ -66,141 +66,66 @@ users_collection = db["users"]
 client = Together(api_key=TOGETHER_API_KEY)
 # =================== Authentication UI =========================
 
-# Hash the password for security
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+# Configure email sender credentials
+EMAIL_SENDER = "nancyhisham2003@gmail.com"
+EMAIL_PASSWORD = "sike xztt teak orkr"
 
-# Check if a user exists
-def get_user(username):
-    return users_collection.find_one({"username": username})
+# Function to send OTP
+def send_otp(email, otp):
+    msg = EmailMessage()
+    msg.set_content(f"Your OTP for login is: {otp}")
+    msg["Subject"] = "Your Login OTP"
+    msg["From"] = EMAIL_SENDER
+    msg["To"] = email
 
-# Create a new user in MongoDB
-def create_user(username, password, email):
-    hashed_pw = hash_password(password)
-    users_collection.insert_one({"username": username, "password": hashed_pw, "email": email})
-
-# Authenticate user credentials
-def authenticate_user(username, password):
-    user = get_user(username)
-    return user and user["password"] == hash_password(password)
-
-# Update the password for a user
-def update_password(username, new_password):
-    hashed_pw = hash_password(new_password)
-    users_collection.update_one({"username": username}, {"$set": {"password": hashed_pw}})
-
-# Generate a 6-digit OTP
-def generate_otp():
-    return str(random.randint(100000, 999999))
-
-# Send OTP to user email
-def send_otp_email(email, otp):
     try:
-        msg = EmailMessage()
-        msg["Subject"] = "Password Reset OTP"
-        msg["From"] = "nancyhisham2003@gmail.com"
-        msg["To"] = email
-        msg.set_content(f"Your OTP for password reset is: {otp}")
-
-        # Send email
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login("nancyhisham2003@gmail.com", "sike xztt teak orkr")
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
             server.send_message(msg)
         return True
     except Exception as e:
-        print("Error sending email:", e)
+        st.error(f"Error sending email: {e}")
         return False
 
-# Initialize session state
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
+# Initialize session state variables if they don't exist
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 if "username" not in st.session_state:
-    st.session_state["username"] = ""
+    st.session_state.username = None
 
-# Authentication UI
-with st.sidebar:
-    if not st.session_state["authenticated"]:
-        st.header("🔐 Authentication")
-        tab1, tab2, tab3 = st.tabs(["Login", "Sign Up", "Forgot Password"])
+# Only show login fields if user is not logged in
+if not st.session_state.logged_in:
+    # Streamlit UI
+    st.title("Secure User Authentication")
+    user_email = st.text_input("Enter your email:")
+    
+    if st.button("Send OTP"):
+        if user_email:
+            otp = random.randint(100000, 999999)  # Generate a 6-digit OTP
+            if send_otp(user_email, otp):
+                st.session_state["otp"] = otp
+                st.session_state["email"] = user_email
+                st.success("OTP sent! Check your email.")
+    
+    if "otp" in st.session_state:
+        otp_input = st.text_input("Enter OTP:", type="password")
 
-        # **🔹 Login Tab**
-        with tab1:
-            st.subheader("Login")
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if otp_input and int(otp_input) == st.session_state["otp"]:
+                # Extract username from email
+                st.session_state.username = st.session_state["email"].split("@")[0]
+                
+                # Generate user-specific collection
+                user_collection_name = f"user_{st.session_state['email'].replace('@', '_').replace('.', '_')}"
+                user_collection = db[user_collection_name]
 
-            if st.button("Login"):
-                if authenticate_user(username, password):
-                    st.session_state["authenticated"] = True
-                    st.session_state["username"] = username
-                    st.success(f"✅ Welcome, {username}!")
-                    st.rerun()
-                else:
-                    st.error("❌ Invalid username or password.")
+                # Store user data if new
+                if not user_collection.find_one({"email": st.session_state["email"]}):
+                    user_collection.insert_one({"email": st.session_state["email"], "data": []})
 
-        # **🔹 Sign-Up Tab**
-        with tab2:
-            st.subheader("Create an Account")
-            new_username = st.text_input("Choose a Username")
-            new_password = st.text_input("Choose a Password", type="password")
-            confirm_password = st.text_input("Confirm Password", type="password")
-            email = st.text_input("Enter Your Email")
-
-            if st.button("Sign Up"):
-                try:
-                    validate_email(email)
-                    if new_password != confirm_password:
-                        st.error("❌ Passwords do not match.")
-                    elif get_user(new_username):
-                        st.error("❌ Username already exists. Try another.")
-                    else:
-                        create_user(new_username, new_password, email)
-                        st.success("✅ Account created successfully! You can now log in.")
-                except EmailNotValidError:
-                    st.error("❌ Invalid email format.")
-
-        # **🔹 Forgot Password Tab**
-        with tab3:
-            st.subheader("Reset Password")
-            reset_username = st.text_input("Enter your Username")
-
-            if st.button("Verify Username"):
-                user = get_user(reset_username)
-                if user:
-                    otp = generate_otp()
-                    st.session_state["reset_user"] = reset_username
-                    st.session_state["otp"] = otp
-                    st.session_state["email"] = user["email"]
-
-                    if send_otp_email(user["email"], otp):
-                        st.success("✅ OTP sent to your email! Enter it below.")
-                    else:
-                        st.error("❌ Failed to send OTP. Check email settings.")
-                else:
-                    st.error("❌ Username not found.")
-
-            if "reset_user" in st.session_state:
-                entered_otp = st.text_input("Enter OTP")
-                new_password = st.text_input("New Password", type="password")
-                confirm_new_password = st.text_input("Confirm New Password", type="password")
-
-                if st.button("Reset Password"):
-                    if entered_otp == st.session_state.get("otp"):
-                        if new_password == confirm_new_password:
-                            update_password(st.session_state["reset_user"], new_password)
-                            st.success("✅ Password reset successfully! You can now log in.")
-                            del st.session_state["reset_user"]
-                            del st.session_state["otp"]
-                            del st.session_state["email"]
-                        else:
-                            st.error("❌ Passwords do not match.")
-                    else:
-                        st.error("❌ Incorrect OTP.")
-
-# **STOP rendering content if user is not authenticated**
-if not st.session_state["authenticated"]:
-    st.warning("⚠️ Please log in to access the application.")
-    st.stop()
+                st.success(f"Welcome, {st.session_state.username}!")
+                st.session_state.logged_in = True  # Set login status
+                st.experimental_rerun()  # Refresh UI to hide login fields
 
 # =================== Main App =========================
 
@@ -604,11 +529,11 @@ text_color = "#E0E0E0" if is_dark_mode else "#000000"
 user_background = "#333" if is_dark_mode else "#e3f2fd"
 user_text_color = "#FFF" if is_dark_mode else "#000"
 
-st.sidebar.write(f"👋 Welcome, {st.session_state.username}")
+if st.session_state.username:  # Only show if user has logged in
+    st.sidebar.write(f"👋 Welcome, {st.session_state.username}")
 
 username = st.session_state.get("username")
 if not username:
-    st.error("You need to be logged in to upload files.")
     st.stop()
 
 if st.sidebar.button("Logout"):
